@@ -1,23 +1,20 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
-using System.Threading.Tasks;
 using AuthX.Helpers;
 using AuthX.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.HttpsPolicy;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Swashbuckle.AspNetCore.Swagger;
+using AutoMapper;
+using System.Threading.Tasks;
 
 namespace AuthX
 {
@@ -34,7 +31,9 @@ namespace AuthX
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddCors();
+            services.AddDbContext<DataContext>(x => x.UseInMemoryDatabase("TestDb"));
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
+            services.AddAutoMapper();
 
             // configure strongly typed settings objects
             var appSettingsSection = Configuration.GetSection("AppSettings");
@@ -50,6 +49,21 @@ namespace AuthX
             })
             .AddJwtBearer(x =>
             {
+                x.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = context =>
+                    {
+                        var userService = context.HttpContext.RequestServices.GetRequiredService<IUserService>();
+                        var userId = int.Parse(context.Principal.Identity.Name);
+                        var user = userService.GetById(userId);
+                        if (user == null)
+                        {
+                            // return unauthorized if user no longer exists
+                            context.Fail("Unauthorized");
+                        }
+                        return Task.CompletedTask;
+                    }
+                };
                 x.RequireHttpsMetadata = false;
                 x.SaveToken = true;
                 x.TokenValidationParameters = new TokenValidationParameters
